@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Die with zero calculator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script defer src="https://unpkg.com/alpinejs@3.10.3/dist/cdn.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        .inputs input {
+            margin: 0px 15px 0px 15px;
+        }
+
+        table th {
+            padding: 5px 15px;
+            border: 1px solid #ddd;
+            text-align: right;
+        }
+
+        table td {
+            padding: 5px 15px;
+            border: 1px solid #ddd;
+            text-align: right;
+        }
+    </style>
+
+    <script>
+
+
+        function activity_function(number_between_zero_and_one) {
+            if (number_between_zero_and_one > 1 || number_between_zero_and_one < 0) {
+                throw Error("Number must be between 0 and 1")
+            }
+
+            const num = number_between_zero_and_one
+
+            return -num + 1
+        }
+
+
+        function get_activity_money_for_year(i, remaining_years, initial_spending_activity, inflation) {
+            const activity_level = activity_function(i / remaining_years)
+            return activity_level * initial_spending_activity * (1 + (inflation / 100)) ** i
+        }
+
+        function simulation(initial_spending_activity = 5000, print_out = true, inputs) {
+
+
+            const { AGE = 27,
+                RET = 40,
+                DEATH = 75,
+                ROI = 6,
+                INFL = 2,
+                INCOME = 4000,
+                EXPENSES = 1000,
+                NET_WORTH = 60 * 1000,
+                DEATH_BUFFER = 10000,
+            } = inputs
+
+            let rows_to_return = []
+            let remaining_years = DEATH - AGE
+            let current_net_worth = NET_WORTH
+
+            for (let year = 0; year < remaining_years; year++) {
+
+                const your_age_this_year = year + AGE
+                const this_year_you_are_working = your_age_this_year < RET
+                const inflation_since_begin = (1 + (INFL / 100)) ** year
+                const expenses_this_year = EXPENSES * inflation_since_begin * 12
+                let income_this_year = 0
+
+                if (this_year_you_are_working) {
+                    income_this_year = INCOME * inflation_since_begin * 12
+                }
+                current_net_worth += income_this_year
+
+                activities_this_year = get_activity_money_for_year(
+                    year, remaining_years, initial_spending_activity, INFL
+                )
+                current_net_worth -= expenses_this_year
+                if (activities_this_year > current_net_worth) {
+                    activities_this_year = current_net_worth
+                    current_net_worth = 0
+                } else {
+                    current_net_worth -= activities_this_year
+                }
+                current_net_worth *= 1 + (ROI / 100)
+
+
+                savings_this_year = income_this_year - activities_this_year - expenses_this_year
+
+                rows_to_return.push(
+                    {
+                        status: this_year_you_are_working ? "W" : "R",
+                        age: your_age_this_year,
+                        net_worth: Math.round(current_net_worth),
+                        expenses_this_year: Math.round(expenses_this_year),
+                        income_this_year: Math.round(income_this_year),
+                        activities: Math.round(activities_this_year),
+                        savings_this_year: Math.round(savings_this_year),
+                    }
+                )
+            }
+
+            if (print_out) {
+                console.table(rows_to_return)
+            }
+
+            return rows_to_return
+        }
+
+        function main(inputs) {
+            let init_spending_activity = 5000
+            let last_simulation_rows = []
+            const DEATH_BUFFER = inputs.DEATH_BUFFER
+
+            const iterations = 50
+
+            let initial_detail = 0.1
+
+            for (let i = 0; i < iterations; i++) {
+                initial_detail = initial_detail * 0.85
+                console.log(initial_detail)
+                rows = simulation(
+                    initial_spending_activity = init_spending_activity,
+                    print_out = i > iterations - 2,
+                    inputs
+                )
+
+                last_row_net_worth = rows[rows.length - 1].net_worth
+                last_row_net_worth = last_row_net_worth > 100000 ? 100000 : last_row_net_worth
+                last_row_net_worth = last_row_net_worth < -100000 ? -100000 : last_row_net_worth
+                init_spending_activity += (last_row_net_worth - DEATH_BUFFER) * initial_detail
+                last_simulation_rows = rows
+            }
+
+            return last_simulation_rows
+        }
+
+    </script>
+
+</head>
+
+<body>
+
+    <h1>Die with zero</h1>
+
+    <div class="inputs" x-data="component">
+        <p>Start net worth <input x-model="start_worth" @change="localStorage.setItem('start_worth', start_worth)"><br>
+        </p>
+        <p>RoI of investments in %<input x-model="roi" @change="localStorage.setItem('roi', roi)">%<br></p>
+        <p>RoI adjusted for inflation = <input :value="roi - inflation" disabled>%</p>
+        <p>Your age<input x-model="your_age" @change="localStorage.setItem('your_age', your_age)"><br></p>
+        <p>Retirement age<input x-model="retirement_age"
+                @change="localStorage.setItem('retirement_age', retirement_age)"><br></p>
+        <p>Death age<input x-model="death_age" @change="localStorage.setItem('death_age', death_age)"><br></p>
+        <p>Essential expenses (monthly)<input x-model="expenses" @change="localStorage.setItem('expenses', expenses)">
+            EUR (food, rent, mortgage, esstentials, no vacations = it should be represented in "activities")<br></p>
+        <p>Net salary (monthly)<input x-model="monthly_salary"
+                @change="localStorage.setItem('monthly_salary', monthly_salary)"> EUR</p>
+        <p>Inflation rate<input x-model="inflation" @change="localStorage.setItem('inflation', inflation)"> %</p>
+        <p>Death buffer<input x-model="death_buffer" @change="localStorage.setItem('death_buffer', death_buffer)"> EUR
+        </p>
+
+        <button @click="compute()">Compute</button>
+        <div style="margin-top: 15px;">
+            <p style="font-size: 12px;">This table and chart values are not adjusted for inflation. Numbers are as they
+                are
+        </div>
+        </p>
+        <div style="overflow-x: scroll;">
+            <table>
+                <thead>
+                    <th>Age</th>
+                    <th>Status</th>
+                    <th>Income this year</th>
+                    <th>Expenses this year</th>
+                    <th>Savings this year</th>
+                    <th>Activities this year</th>
+                    <th>Net worth</th>
+                </thead>
+                <tbody>
+                    <template x-for="row in rows">
+                        <tr>
+                            <td x-text="row.age"></td>
+                            <td x-text="row.status == 'W' ? '💼' : '🏖️'"></td>
+                            <td x-text="row.income_this_year"></td>
+                            <td x-text="row.expenses_this_year"></td>
+                            <td x-text="row.savings_this_year"></td>
+                            <td x-text="row.activities"></td>
+                            <td x-text="row.net_worth"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+
+        <div>
+            <canvas id="net-worth-chart"></canvas>
+        </div>
+
+    </div>
+
+
+    <script>
+
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('component', () => ({
+                rows: [],
+                start_worth: parseInt(localStorage.getItem('start_worth')) || 5000,
+                roi: parseInt(localStorage.getItem('roi')) || 5,
+                inflation: parseInt(localStorage.getItem('inflation')) || 2,
+                your_age: parseInt(localStorage.getItem('your_age')) || 30,
+                retirement_age: parseInt(localStorage.getItem('retirement_age')) || 65,
+                death_age: parseInt(localStorage.getItem('death_age')) || 78,
+                expenses: parseInt(localStorage.getItem('expenses')) || 1000,
+                monthly_salary: parseInt(localStorage.getItem('monthly_salary')) || 3000,
+                death_buffer: parseInt(localStorage.getItem('death_buffer')) || 10000,
+                chart: null,
+                compute() {
+                    const rows = main({
+                        AGE: parseInt(this.your_age),
+                        RET: parseInt(this.retirement_age),
+                        INCOME: parseInt(this.monthly_salary),
+                        DEATH: parseInt(this.death_age),
+                        EXPENSES: parseInt(this.expenses),
+                        NET_WORTH: parseInt(this.start_worth),
+                        INFL: parseFloat(this.inflation),
+                        ROI: parseFloat(this.roi),
+                        DEATH_BUFFER: parseInt(this.death_buffer),
+                    })
+
+                    if (this.chart) {
+                        this.chart.destroy()
+                    }
+
+                    this.rows = [...rows]
+
+                    const ctx = document.getElementById('net-worth-chart');
+
+                    this.chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: rows.map(row => row.age),
+                            datasets: [{
+                                label: 'Net worth',
+                                data: rows.map(row => row.net_worth),
+                                backgroundColor: [
+                                    'rgba(255, 99, 132, 0.2)',
+                                ],
+                                borderColor: [
+                                    'rgba(255, 99, 132, 1)',
+                                ],
+                                borderWidth: 1
+                            }, {
+                                label: 'Activities',
+                                data: rows.map(row => row.activities),
+                                backgroundColor: [
+                                    'rgba(220, 120, 50, 0.2)',
+                                ],
+                                borderColor: [
+                                    'rgba(220, 120, 50, 1)',
+                                ],
+                                borderWidth: 1
+                            }, {
+                                label: 'Income',
+                                data: rows.map(row => row.income_this_year),
+                                backgroundColor: [
+                                    'rgba(20, 255, 20, 0.3)',
+                                ],
+                                borderColor: [
+                                    'rgba(20, 255, 20, 1)',
+                                ],
+                                borderWidth: 1
+                            }, {
+                                label: 'Expenses',
+                                data: rows.map(row => row.expenses_this_year),
+                                backgroundColor: [
+                                    'rgba(255, 0, 0, 0.3)',
+                                ],
+                                borderColor: [
+                                    'rgba(255, 0, 0, 1)',
+                                ],
+                                borderWidth: 1
+                            }, {
+                                label: 'Savings',
+                                data: rows.map(row => row.savings_this_year),
+                                backgroundColor: [
+                                    'rgba(0, 0, 255, 0.3)',
+                                ],
+                                borderColor: [
+                                    'rgba(0, 0, 255, 1)',
+                                ],
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            scales: {
+                                y: {
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                }
+            }))
+        })
+
+    </script>
+
+</body>
+
+</html>
