@@ -30,7 +30,6 @@
 
     <script>
 
-
         function activity_function(number_between_zero_and_one) {
             if (number_between_zero_and_one > 1 || number_between_zero_and_one < 0) {
                 throw Error("Number must be between 0 and 1")
@@ -48,7 +47,6 @@
         }
 
         function simulation(initial_spending_activity = 5000, print_out = true, inputs) {
-
 
             const { AGE = 27,
                 RET = 40,
@@ -124,7 +122,7 @@
 
             for (let i = 0; i < iterations; i++) {
                 initial_detail = initial_detail * 0.85
-                console.log(initial_detail)
+
                 rows = simulation(
                     initial_spending_activity = init_spending_activity,
                     print_out = i > iterations - 2,
