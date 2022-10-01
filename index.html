@@ -118,13 +118,13 @@
         function main(inputs) {
             const DEATH_BUFFER = inputs.DEATH_BUFFER
             const iterations = 50
-            
+
             let last_simulation_rows = []
             let min_spending = -1e6
             let max_spending = 1e6
-            
+
             for (let i = 0; i < iterations; i++) {
-                
+
                 const trying_spending = (max_spending + min_spending) / 2
 
                 rows = simulation(
@@ -134,7 +134,7 @@
                 )
 
                 last_row_net_worth = rows[rows.length - 1].net_worth
-                
+
                 const diff = last_row_net_worth - DEATH_BUFFER
 
                 if (diff > 0) {
@@ -142,7 +142,7 @@
                 } else {
                     max_spending = trying_spending
                 }
-                
+
                 last_simulation_rows = rows
             }
 
@@ -203,8 +203,7 @@
                             <td x-text="row.savings_this_year"></td>
                             <td>
                                 <span
-                                    x-text="row.income_this_year ? Math.round(row.savings_this_year / row.income_this_year * 100) : 0"
-                                ></span>
+                                    x-text="row.income_this_year ? Math.round(row.savings_this_year / row.income_this_year * 100) : 0"></span>
                                 %
                             </td>
                             <td x-text="row.activities"></td>
