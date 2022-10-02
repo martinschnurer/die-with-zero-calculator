@@ -11,7 +11,11 @@ As of now, there's only one activity spending function - linear function.
 
 # How does it look?
 
-![How does app look like](./docs/img1.png)
+![How does app look like](./docs/img2.png)
+
+![How does app look like](./docs/img3.png)
+
+![How does app look like](./docs/img4.png)
 
 # External libraries
 
