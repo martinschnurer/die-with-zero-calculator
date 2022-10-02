@@ -3,7 +3,7 @@
 
 <head>
     <title>Die with zero calculator</title>
-    <meta name="encoding" content="utf-16">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script defer src="https://unpkg.com/alpinejs@3.10.3/dist/cdn.min.js"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
@@ -26,6 +26,10 @@
             padding: 5px 15px;
             border: 1px solid #ddd;
             text-align: right;
+        }
+
+        input {
+            padding: 2px 5px;
         }
     </style>
 
@@ -58,7 +62,12 @@
                 EXPENSES = 1000,
                 NET_WORTH = 60 * 1000,
                 DEATH_BUFFER = 10000,
-                ACTIVITY_FN
+                ACTIVITY_FN,
+                RET_BENEFIT_PERCENT_OF_START_INCOME = 0,
+                RET_BENEFIT_START_AGE = 10000,
+                INHERIT_AGE = null,
+                INHERIT_MONEY = 0,
+                ADJUST_INHERIT_MONEY_FOR_INFLATION = false
             } = inputs
 
             let rows_to_return = []
@@ -74,11 +83,22 @@
                 const inflation_since_begin = (1 + (INFL / 100)) ** year
                 const expenses_this_year = EXPENSES * inflation_since_begin * 12
                 let income_this_year = 0
+                let retirement_benefit_this_year = 0
 
                 if (this_year_you_are_working) {
                     income_this_year = INCOME * inflation_since_begin * 12
                 }
                 current_net_worth += income_this_year
+
+                if (your_age_this_year >= RET_BENEFIT_START_AGE) {
+                    const tmp_val = (RET_BENEFIT_PERCENT_OF_START_INCOME / 100) * inflation_since_begin * INCOME * 12
+                    current_net_worth += tmp_val
+                    retirement_benefit_this_year = tmp_val
+                }
+
+                if (your_age_this_year == INHERIT_AGE) {
+                    current_net_worth += ADJUST_INHERIT_MONEY_FOR_INFLATION ? INHERIT_MONEY * ((1 + INFL / 100) ** (INHERIT_AGE - AGE)) : INHERIT_MONEY
+                }
 
                 activities_this_year = get_activity_money_for_year(
                     year, remaining_years, initial_spending_activity, INFL, custom_activity_fn
@@ -104,6 +124,7 @@
                         income_this_year: Math.round(income_this_year),
                         activities: Math.round(activities_this_year),
                         savings_this_year: Math.round(savings_this_year),
+                        retirement_benefit_this_year: Math.round(retirement_benefit_this_year),
                     }
                 )
             }
@@ -153,44 +174,107 @@
 
 </head>
 
-<body>
+<body style="max-width: 1200px; margin: 0 auto;">
 
     <h1>Die with zero</h1>
 
     <div class="inputs" x-data="component">
-        <p>Start net worth <input x-model="start_worth" @change="localStorage.setItem('start_worth', start_worth)"><br>
+        <p>Currency:
+            <select @change="localStorage.setItem('currency', currency)" x-model="currency">
+                <option value="EUR">EUR</option>
+                <option value="USD">USD</option>
+                <option value="CHF">CHF</option>
+            </select>
         </p>
-        <p>RoI of investments in %<input x-model="roi" @change="localStorage.setItem('roi', roi)">%<br></p>
-        <p>RoI adjusted for inflation = <input :value="roi - inflation" disabled>%</p>
-        <p>Your age<input x-model="your_age" @change="localStorage.setItem('your_age', your_age)"><br></p>
-        <p>Retirement age<input x-model="retirement_age"
-                @change="localStorage.setItem('retirement_age', retirement_age)"><br></p>
-        <p>Death age<input x-model="death_age" @change="localStorage.setItem('death_age', death_age)"><br></p>
-        <p>Essential expenses (monthly)<input x-model="expenses" @change="localStorage.setItem('expenses', expenses)">
-            EUR (food, rent, mortgage, esstentials, no vacations = it should be represented in "activities")<br></p>
-        <p>Net salary (monthly)<input x-model="monthly_salary"
-                @change="localStorage.setItem('monthly_salary', monthly_salary)"> EUR</p>
-        <p>Inflation rate<input x-model="inflation" @change="localStorage.setItem('inflation', inflation)"> %</p>
-        <p>Death buffer<input x-model="death_buffer" @change="localStorage.setItem('death_buffer', death_buffer)"> EUR
-        </p>
-        <p>Activity function (js function with output from 1 to 0)<input x-model="activity_function_js"
-                @change="localStorage.setItem('activity_function_js', activity_function_js)"> %</p>
-        <button @click="compute()">Compute</button>
+        <fieldset style="margin-bottom: 20px;">
+            <legend>Basic info</legend>
+            <p>Start net worth <input x-model="start_worth"
+                    @change="localStorage.setItem('start_worth', start_worth)"><span x-text="currency"></span><br>
+            </p>
+            <p>RoI in %<input x-model="roi" @change="localStorage.setItem('roi', roi)">%<br></p>
+            <p>Inflation rate<input x-model="inflation" @change="localStorage.setItem('inflation', inflation)"> %</p>
+            <p>RoI adjusted for inflation <input :value="roi - inflation" disabled>%</p>
+            <p>Your age<input x-model="your_age" @change="localStorage.setItem('your_age', your_age)"><br></p>
+            <p>Essential expenses (monthly)<input x-model="expenses"
+                    @change="localStorage.setItem('expenses', expenses)">
+                <span x-text="currency"></span><br>
+            </p>
+            <p style="color: #666; font-size: 10px; margin-top: -10px;">Food, rent, mortgage, esstentials, no vacations
+                = it should be
+                represented in "activities"
+            </p>
+            <p>Net salary (monthly)<input x-model="monthly_salary"
+                    @change="localStorage.setItem('monthly_salary', monthly_salary)"> <span x-text="currency"></span>
+            </p>
+            <p style="color: #666; font-size: 10px; margin-top: -10px;">Salary after taxes and after insurance, etc.
+            </p>
+        </fieldset>
+
+        <fieldset style="margin-bottom: 20px;">
+            <legend>Retirement</legend>
+            <p>
+                Retirement age
+                <input x-model="retirement_age" @change="localStorage.setItem('retirement_age', retirement_age)">
+            </p>
+            <p>
+                Retirement government benefit (as % of starting income)
+                <input x-model="ret_benefit_percent_of_start_income"
+                    @change="localStorage.setItem('ret_benefit_percent_of_start_income', ret_benefit_percent_of_start_income)">%
+            </p>
+            <p>
+                Retirement benefit starting at age
+                <input x-model="ret_benefit_start_age"
+                    @change="localStorage.setItem('ret_benefit_start_age', ret_benefit_start_age)">
+            </p>
+            <p>Death buffer<input x-model="death_buffer" @change="localStorage.setItem('death_buffer', death_buffer)">
+                <span x-text="currency"></span>
+            </p>
+            <p style="color: #666; font-size: 10px; margin-top: -10px;">If you don't want to die with 0 but with <span
+                    x-text="death_buffer" style="font-size: 14px;"></span> in your
+                bank account</p>
+            <p>Death age<input x-model="death_age" @change="localStorage.setItem('death_age', death_age)"><br></p>
+        </fieldset>
+
+        <fieldset style="margin-bottom: 20px;">
+            <legend>Inheritance</legend>
+            <p>
+                Your age when you inherit
+                <input x-model="inherit_age" @change="localStorage.setItem('inherit_age', inherit_age)">
+            </p>
+            <p><span x-text="currency"></span> You will inherit<input x-model="inherit_money"
+                    @change="localStorage.setItem('inherit_money', inherit_money)"><br></p>
+            <p>
+                <input type="checkbox"
+                    @change="localStorage.setItem('adjust_inherit_money_for_inflation', adjust_inherit_money_for_inflation)"
+                    x-model="adjust_inherit_money_for_inflation"> Adjust inherited money for
+                inflation
+            </p>
+            <p style="color: #666; font-size: 10px; margin-top: -10px;">
+                If above checkbox is checked, you will inherit <span style="font-size: 14px;"
+                    x-text="Math.round(inherit_money * (1 + inflation/100)**(inherit_age-your_age))"></span> at your age
+                <span x-text="inherit_age" style="font-size: 14px;"></span>, if not, you will inherit <span
+                    x-text="inherit_money"></span> <span x-text="currency"></span> at age <span
+                    x-text="inherit_age"></span>
+            </p>
+        </fieldset>
+
+        <button @click="compute()" style="margin: 1px 0px 20px 0px; padding: 10px 40px;">Compute</button>
         <div style="margin-top: 15px;">
-            <p style="font-size: 12px;">This table and chart values are not adjusted for inflation. Numbers are as they
+            <p style="font-size: 12px;">This table and chart values are not adjusted for inflation
                 are
+            </p>
         </div>
-        </p>
         <div style="overflow-x: scroll;">
             <table>
-                <thead>
+                <thead style="font-size: 14px;">
                     <th>Age</th>
                     <th>Status</th>
-                    <th>Income this year</th>
-                    <th>Expenses this year</th>
-                    <th>Savings this year</th>
-                    <th>Saving rate</th>
-                    <th>Activities this year</th>
+                    <th>Income<br> this year</th>
+                    <th>Government<br>ret benefit</th>
+                    <th>Expenses<br>this year</th>
+                    <th>Savings<br>this year</th>
+                    <th>Saving<br>rate</th>
+                    <th>Activities<br>this year</th>
                     <th>Net worth</th>
                 </thead>
                 <tbody>
@@ -199,6 +283,7 @@
                             <td x-text="row.age"></td>
                             <td x-text="row.status == 'W' ? '💼' : '🏖️'"></td>
                             <td x-text="row.income_this_year"></td>
+                            <td x-text="row.retirement_benefit_this_year"></td>
                             <td x-text="row.expenses_this_year"></td>
                             <td x-text="row.savings_this_year"></td>
                             <td>
@@ -227,6 +312,7 @@
         document.addEventListener('alpine:init', () => {
             Alpine.data('component', () => ({
                 rows: [],
+                currency: localStorage.getItem('currency') || 'EUR',
                 start_worth: parseInt(localStorage.getItem('start_worth')) || 5000,
                 roi: parseInt(localStorage.getItem('roi')) || 5,
                 inflation: parseInt(localStorage.getItem('inflation')) || 2,
@@ -237,7 +323,12 @@
                 monthly_salary: parseInt(localStorage.getItem('monthly_salary')) || 3000,
                 death_buffer: parseInt(localStorage.getItem('death_buffer')) || 10000,
                 activity_function_js: localStorage.getItem('activity_function_js') || null,
+                ret_benefit_percent_of_start_income: parseInt(localStorage.getItem('ret_benefit_percent_of_start_income')) || 0,
+                ret_benefit_start_age: parseInt(localStorage.getItem('ret_benefit_start_age')) || null,
                 chart: null,
+                inherit_age: parseInt(localStorage.getItem('inherit_age')) || null,
+                inherit_money: parseInt(localStorage.getItem('inherit_money')) || 0,
+                adjust_inherit_money_for_inflation: localStorage.getItem('adjust_inherit_money_for_inflation') == "true",
                 compute() {
                     const rows = main({
                         AGE: parseInt(this.your_age),
@@ -250,6 +341,11 @@
                         ROI: parseFloat(this.roi),
                         DEATH_BUFFER: parseInt(this.death_buffer),
                         ACTIVITY_FN: this.activity_function_js,
+                        RET_BENEFIT_PERCENT_OF_START_INCOME: parseFloat(this.ret_benefit_percent_of_start_income),
+                        RET_BENEFIT_START_AGE: parseInt(this.ret_benefit_start_age),
+                        INHERIT_AGE: parseInt(this.inherit_age),
+                        INHERIT_MONEY: parseFloat(this.inherit_money),
+                        ADJUST_INHERIT_MONEY_FOR_INFLATION: this.adjust_inherit_money_for_inflation
                     })
 
                     if (this.chart) {
