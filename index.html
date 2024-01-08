@@ -5,8 +5,291 @@
     <title>Die with zero calculator</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script type="module">
+        import { Controller, Application } from 'https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/+esm'
+
+        
+        class SomethingController extends Controller {
+            static base_targets = ["baseStart", "baseRoi", "baseInflRate", "baseAge", "baseExp", "baseNetSalary"]
+            static ret_targets = ["retAge", "retGovBenPerc", "retGovBenAge", "retDeathBuffer", "retDeathAge"]
+            static inh_targets = ["inhAge", "inhMoney", "inhAdjustForInfl"]
+            static targets = ["currInput", "curr", "resultsBody" ,...this.base_targets, ...this.ret_targets, ...this.inh_targets]
+
+            connect() {
+                console.log(this.baseAgeTarget)
+                console.log(this.targets)
+
+                this.changeCurrency()
+            }
+
+            get_activity_money_for_year(i, remaining_years, initial_spending_activity, inflation, fn = null) {
+                const activity_level = fn ? fn(i / remaining_years) : activity_function(i / remaining_years)
+                return activity_level * initial_spending_activity * (1 + (inflation / 100)) ** i
+            }
+
+            activity_function(number_between_zero_and_one) {
+                if (number_between_zero_and_one > 1 || number_between_zero_and_one < 0) {
+                    throw Error("Number must be between 0 and 1")
+                }
+
+                const num = number_between_zero_and_one
+
+                return -num + 1
+            }
+
+            changeCurrency(event) {
+                for (const t of this.currTargets) {
+                    t.innerText = event ? event.target.value : this.currInputTarget.value
+                }
+            }
+
+            compute() {
+
+                const rows = main({
+                    AGE: parseInt(this.baseAgeTarget.value),
+                    RET: parseInt(this.retAgeTarget.value),
+                    INCOME: parseInt(this.baseNetSalaryTarget.value),
+                    DEATH: parseInt(this.retDeathAgeTarget.value),
+                    EXPENSES: parseInt(this.baseExpTarget.value),
+                    NET_WORTH: parseInt(this.baseStartTarget.value),
+                    INFL: parseFloat(this.baseInflRateTarget.value),
+                    ROI: parseFloat(this.baseRoiTarget.value),
+                    DEATH_BUFFER: parseInt(this.retDeathBufferTarget.value),
+                    ACTIVITY_FN: null,
+                    RET_BENEFIT_PERCENT_OF_START_INCOME: parseFloat(this.retGovBenPercTarget.value),
+                    RET_BENEFIT_START_AGE: parseInt(this.retGovBenAgeTarget.value),
+                    INHERIT_AGE: parseInt(this.inhAgeTarget.value),
+                    INHERIT_MONEY: parseFloat(this.inhMoneyTarget.value),
+                    ADJUST_INHERIT_MONEY_FOR_INFLATION: this.inhAdjustForInflTarget.checked
+                })
+
+                if (this.chart) {
+                    this.chart.destroy()
+                }
+
+                this.rows = [...rows]
+
+                const tbody = this.resultsBodyTarget
+                tbody.innerHTML = ''
+
+                for (const row of this.rows) {
+                    const rowString = `
+                    <tr>
+                        <td>${row.age}</td>
+                        <td>${row.status == 'W' ? '💼' : '🏖️'}</td>
+                        <td>${row.income_this_year}</td>
+                        <td>${row.retirement_benefit_this_year}</td>
+                        <td>${row.expenses_this_year}</td>
+                        <td>${row.savings_this_year}</td>
+                        <td>
+                            <span>
+                                ${row.income_this_year ? Math.round(row.savings_this_year / row.income_this_year * 100) : 0}
+                            </span>
+                            %
+                        </td>
+                        <td>${row.activities}</td>
+                        <td>${row.net_worth}</td>
+                    </tr>
+                    `
+
+                    tbody.innerHTML += rowString
+                }
+
+                const ctx = document.getElementById('net-worth-chart');
+
+                this.chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: rows.map(row => row.age),
+                        datasets: [{
+                            label: 'Net worth',
+                            data: rows.map(row => row.net_worth),
+                            backgroundColor: [
+                                'rgba(255, 99, 132, 0.2)',
+                            ],
+                            borderColor: [
+                                'rgba(255, 99, 132, 1)',
+                            ],
+                            borderWidth: 1
+                        }, {
+                            label: 'Activities',
+                            data: rows.map(row => row.activities),
+                            backgroundColor: [
+                                'rgba(220, 120, 50, 0.2)',
+                            ],
+                            borderColor: [
+                                'rgba(220, 120, 50, 1)',
+                            ],
+                            borderWidth: 1
+                        }, {
+                            label: 'Income',
+                            data: rows.map(row => row.income_this_year),
+                            backgroundColor: [
+                                'rgba(20, 255, 20, 0.3)',
+                            ],
+                            borderColor: [
+                                'rgba(20, 255, 20, 1)',
+                            ],
+                            borderWidth: 1
+                        }, {
+                            label: 'Expenses',
+                            data: rows.map(row => row.expenses_this_year),
+                            backgroundColor: [
+                                'rgba(255, 0, 0, 0.3)',
+                            ],
+                            borderColor: [
+                                'rgba(255, 0, 0, 1)',
+                            ],
+                            borderWidth: 1
+                        }, {
+                            label: 'Savings',
+                            data: rows.map(row => row.savings_this_year),
+                            backgroundColor: [
+                                'rgba(0, 0, 255, 0.3)',
+                            ],
+                            borderColor: [
+                                'rgba(0, 0, 255, 1)',
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+
+            simulation(initial_spending_activity = 5000, print_out = true, inputs) {
+
+                const {
+                    AGE = 27,
+                    RET = 40,
+                    DEATH = 75,
+                    ROI = 6,
+                    INFL = 2,
+                    INCOME = 4000,
+                    EXPENSES = 1000,
+                    NET_WORTH = 60 * 1000,
+                    DEATH_BUFFER = 10000,
+                    ACTIVITY_FN,
+                    RET_BENEFIT_PERCENT_OF_START_INCOME = 0,
+                    RET_BENEFIT_START_AGE = 10000,
+                    INHERIT_AGE = null,
+                    INHERIT_MONEY = 0,
+                    ADJUST_INHERIT_MONEY_FOR_INFLATION = false
+                } = inputs
+
+                let rows_to_return = []
+                let remaining_years = DEATH - AGE
+                let current_net_worth = NET_WORTH
+
+                const custom_activity_fn = ACTIVITY_FN ? eval(ACTIVITY_FN) : null
+
+                for (let year = 0; year < remaining_years; year++) {
+
+                    const your_age_this_year = year + AGE
+                    const this_year_you_are_working = your_age_this_year < RET
+                    const inflation_since_begin = (1 + (INFL / 100)) ** year
+                    const expenses_this_year = EXPENSES * inflation_since_begin * 12
+                    let income_this_year = 0
+                    let retirement_benefit_this_year = 0
+
+                    if (this_year_you_are_working) {
+                        income_this_year = INCOME * inflation_since_begin * 12
+                    }
+                    current_net_worth += income_this_year
+
+                    if (your_age_this_year >= RET_BENEFIT_START_AGE) {
+                        const tmp_val = (RET_BENEFIT_PERCENT_OF_START_INCOME / 100) * inflation_since_begin * INCOME * 12
+                        current_net_worth += tmp_val
+                        retirement_benefit_this_year = tmp_val
+                    }
+
+                    if (your_age_this_year == INHERIT_AGE) {
+                        current_net_worth += ADJUST_INHERIT_MONEY_FOR_INFLATION ? INHERIT_MONEY * ((1 + INFL / 100) ** (INHERIT_AGE - AGE)) : INHERIT_MONEY
+                    }
+
+                    activities_this_year = get_activity_money_for_year(
+                        year, remaining_years, initial_spending_activity, INFL, custom_activity_fn
+                    )
+                    current_net_worth -= expenses_this_year
+                    if (activities_this_year > current_net_worth) {
+                        activities_this_year = current_net_worth
+                        current_net_worth = 0
+                    } else {
+                        current_net_worth -= activities_this_year
+                    }
+
+                    current_net_worth *= 1 + (ROI / 100)
+
+                    savings_this_year = income_this_year - activities_this_year - expenses_this_year
+
+                    rows_to_return.push(
+                        {
+                            status: this_year_you_are_working ? "W" : "R",
+                            age: your_age_this_year,
+                            net_worth: Math.round(current_net_worth),
+                            expenses_this_year: Math.round(expenses_this_year),
+                            income_this_year: Math.round(income_this_year),
+                            activities: Math.round(activities_this_year),
+                            savings_this_year: Math.round(savings_this_year),
+                            retirement_benefit_this_year: Math.round(retirement_benefit_this_year),
+                        }
+                    )
+                }
+
+                if (print_out) {
+                    console.table(rows_to_return)
+                }
+
+                return rows_to_return
+            }
+
+            main(inputs) {
+                const DEATH_BUFFER = inputs.DEATH_BUFFER
+                const iterations = 50
+
+                let last_simulation_rows = []
+                let min_spending = -1e6
+                let max_spending = 1e6
+
+                for (let i = 0; i < iterations; i++) {
+
+                    const trying_spending = (max_spending + min_spending) / 2
+
+                    rows = simulation(
+                        trying_spending,
+                        i > iterations - 2,
+                        inputs,
+                    )
+
+                    last_row_net_worth = rows[rows.length - 1].net_worth
+
+                    const diff = last_row_net_worth - DEATH_BUFFER
+
+                    if (diff > 0) {
+                        min_spending = trying_spending
+                    } else {
+                        max_spending = trying_spending
+                    }
+
+                    last_simulation_rows = rows
+                }
+
+                return last_simulation_rows
+            }
+        }
+        
+        window.Stimulus = Application.start()
+        window.Stimulus.register("calc", SomethingController)
+    </script>
     <script async defer src="https://unpkg.com/alpinejs@3.10.3/dist/cdn.min.js"></script>
     <script async defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    
     <style>
         body {
             font-family: 'Courier New', Courier, monospace;
@@ -32,6 +315,8 @@
             padding: 2px 5px;
         }
     </style>
+
+
 
     <script>
 
@@ -174,37 +459,85 @@
 
 </head>
 
-<body style="max-width: 1200px; margin: 0 auto;">
+<body data-controller="calc" style="max-width: 1200px; margin: 0 auto;">
 
     <h1>Die with zero</h1>
 
-    <div class="inputs" x-data="component">
+    <div class="inputs">
         <p>Currency:
-            <select @change="localStorage.setItem('currency', currency)" x-model="currency">
-                <option value="EUR">EUR</option>
+            <select data-calc-target="currInput" data-action="change->calc#changeCurrency">
+                <option value="EUR" selected>EUR</option>
                 <option value="USD">USD</option>
                 <option value="CHF">CHF</option>
             </select>
         </p>
         <fieldset style="margin-bottom: 20px;">
             <legend>Basic info</legend>
-            <p>Start net worth <input x-model="start_worth"
-                    @change="localStorage.setItem('start_worth', start_worth)"><span x-text="currency"></span><br>
+            <p>Start net worth 
+                <input
+                    data-calc-target="baseStart"
+                    @change="localStorage.setItem('start_worth', start_worth)"
+                    value="10000"
+                >
+                <span data-target="curr"></span>
+                <br>
             </p>
-            <p>RoI in %<input x-model="roi" @change="localStorage.setItem('roi', roi)">%<br></p>
-            <p>Inflation rate<input x-model="inflation" @change="localStorage.setItem('inflation', inflation)"> %</p>
-            <p>RoI adjusted for inflation <input :value="roi - inflation" disabled>%</p>
-            <p>Your age<input x-model="your_age" @change="localStorage.setItem('your_age', your_age)"><br></p>
-            <p>Essential expenses (monthly)<input x-model="expenses"
-                    @change="localStorage.setItem('expenses', expenses)">
-                <span x-text="currency"></span><br>
+            <p>
+                RoI in %
+                <input
+                    data-calc-target="baseRoi" 
+                    x-model="roi" 
+                    @change="localStorage.setItem('roi', roi)"
+                    value="6"
+                >%
+                <br>
             </p>
-            <p style="color: #666; font-size: 10px; margin-top: -10px;">Food, rent, mortgage, esstentials, no vacations
+            <p>
+                Inflation rate
+                <input 
+                    data-calc-target="baseInflRate"
+                    x-model="inflation"
+                    @change="localStorage.setItem('inflation', inflation)"
+                    value="3"
+                > %
+            </p>
+            <p>
+                RoI adjusted for inflation
+                <input :value="roi - inflation" disabled>
+                %
+            </p>
+            <p>
+                Your age
+                <input
+                    data-calc-target="baseAge"
+                    x-model="your_age" 
+                    @change="localStorage.setItem('your_age', your_age)"
+                    value="30"
+                >
+                <br>
+            </p>
+            <p>Essential expenses (monthly)
+                <input
+                    data-calc-target="baseExp"
+                    x-model="expenses"
+                    @change="localStorage.setItem('expenses', expenses)"
+                    value="1000"
+                >
+                <span data-target="curr" x-text="currency"></span><br>
+            </p>
+            <p style="color: #666; font-size: 10px; margin-top: -10px;">Food, rent, mortgage, esstentials, no vacations.
                 = it should be
-                represented in "activities"
+                represented in "activities".
             </p>
-            <p>Net salary (monthly)<input x-model="monthly_salary"
-                    @change="localStorage.setItem('monthly_salary', monthly_salary)"> <span x-text="currency"></span>
+            <p>
+                Net salary (monthly)
+                <input
+                    data-calc-target="baseNetSalary"
+                    x-model="monthly_salary"
+                    @change="localStorage.setItem('monthly_salary', monthly_salary)"
+                    value="2000"
+                > 
+                <span data-calc-target="curr" x-text="currency"></span>
             </p>
             <p style="color: #666; font-size: 10px; margin-top: -10px;">Salary after taxes and after insurance, etc.
             </p>
@@ -214,40 +547,86 @@
             <legend>Retirement</legend>
             <p>
                 Retirement age
-                <input x-model="retirement_age" @change="localStorage.setItem('retirement_age', retirement_age)">
+                <input data-calc-target="retAge" x-model="retirement_age" @change="localStorage.setItem('retirement_age', retirement_age)" value="55">
             </p>
             <p>
                 Retirement government benefit (as % of starting income)
-                <input x-model="ret_benefit_percent_of_start_income"
-                    @change="localStorage.setItem('ret_benefit_percent_of_start_income', ret_benefit_percent_of_start_income)">%
+                <input 
+                    data-calc-target="retGovBenPerc"
+                    x-model="ret_benefit_percent_of_start_income"
+                    @change="localStorage.setItem('ret_benefit_percent_of_start_income', ret_benefit_percent_of_start_income)"
+                    value="10"
+                >%
             </p>
             <p>
                 Retirement benefit starting at age
-                <input x-model="ret_benefit_start_age"
-                    @change="localStorage.setItem('ret_benefit_start_age', ret_benefit_start_age)">
+                <input
+                    data-calc-target="retGovBenAge"
+                    x-model="ret_benefit_start_age"
+                    @change="localStorage.setItem('ret_benefit_start_age', ret_benefit_start_age)"
+                    value="65"
+                >
             </p>
-            <p>Death buffer<input x-model="death_buffer" @change="localStorage.setItem('death_buffer', death_buffer)">
-                <span x-text="currency"></span>
+            <p>Death buffer
+                <input
+                    data-calc-target="retDeathBuffer"
+                    x-model="death_buffer" 
+                    @change="localStorage.setItem('death_buffer', death_buffer)"
+                    value="10000"
+                >
+                <span data-target="curr" x-text="currency"></span>
             </p>
-            <p style="color: #666; font-size: 10px; margin-top: -10px;">If you don't want to die with 0 but with <span
-                    x-text="death_buffer" style="font-size: 14px;"></span> in your
-                bank account</p>
-            <p>Death age<input x-model="death_age" @change="localStorage.setItem('death_age', death_age)"><br></p>
+            <p 
+                style="color: #666; font-size: 10px; margin-top: -10px;"
+            >
+                If you don't want to die with 0 but with 
+                <span
+                    x-text="death_buffer" 
+                    style="font-size: 14px;"
+                ></span> 
+                in your bank account
+            </p>
+            <p>
+                Death age
+                <input
+                    data-calc-target="retDeathAge"
+                    x-model="death_age"
+                    @change="localStorage.setItem('death_age', death_age)"
+                    value="72"
+                >
+                <br>
+            </p>
+            <a href="./imgs/img1.png" target="_blank">
+                <img src="./imgs/img1.png" style="border: 2px solid black; margin-top: 10px;" height="400">
+            <a>
         </fieldset>
 
         <fieldset style="margin-bottom: 20px;">
             <legend>Inheritance</legend>
             <p>
                 Your age when you inherit
-                <input x-model="inherit_age" @change="localStorage.setItem('inherit_age', inherit_age)">
+                <input data-calc-target="inhAge" x-model="inherit_age" @change="localStorage.setItem('inherit_age', inherit_age)" value="60">
             </p>
-            <p><span x-text="currency"></span> You will inherit<input x-model="inherit_money"
-                    @change="localStorage.setItem('inherit_money', inherit_money)"><br></p>
             <p>
-                <input type="checkbox"
-                    @change="localStorage.setItem('adjust_inherit_money_for_inflation', adjust_inherit_money_for_inflation)"
-                    x-model="adjust_inherit_money_for_inflation"> Adjust inherited money for
-                inflation
+                <span
+                    data-calc-target="curr"
+                    x-text="currency"
+                ></span> 
+                You will inherit
+                <input
+                    data-calc-target="inhMoney"
+                    x-model="inherit_money"
+                    @change="localStorage.setItem('inherit_money', inherit_money)"
+                    value="20000"
+                ><br>
+            </p>
+            <p>
+                <input
+                    data-calc-target="inhAdjustForInfl"
+                    type="checkbox"
+                    checked
+                > 
+                Adjust inherited money for inflation
             </p>
             <p style="color: #666; font-size: 10px; margin-top: -10px;">
                 If above checkbox is checked, you will inherit <span style="font-size: 14px;"
@@ -258,10 +637,10 @@
             </p>
         </fieldset>
 
-        <button @click="compute()" style="margin: 1px 0px 20px 0px; padding: 10px 40px;">Compute</button>
+        <button data-action="click->calc#compute" style="margin: 1px 0px 20px 0px; padding: 10px 40px;">Compute</button>
         <div style="margin-top: 15px;">
-            <p style="font-size: 12px;">This table and chart values are not adjusted for inflation
-                are
+            <p style="font-size: 12px;">
+                This table and chart values are not adjusted for inflation
             </p>
         </div>
         <div style="overflow-x: scroll;">
@@ -277,24 +656,7 @@
                     <th>Activities<br>this year</th>
                     <th>Net worth</th>
                 </thead>
-                <tbody>
-                    <template x-for="row in rows">
-                        <tr>
-                            <td x-text="row.age"></td>
-                            <td x-text="row.status == 'W' ? '💼' : '🏖️'"></td>
-                            <td x-text="row.income_this_year"></td>
-                            <td x-text="row.retirement_benefit_this_year"></td>
-                            <td x-text="row.expenses_this_year"></td>
-                            <td x-text="row.savings_this_year"></td>
-                            <td>
-                                <span
-                                    x-text="row.income_this_year ? Math.round(row.savings_this_year / row.income_this_year * 100) : 0"></span>
-                                %
-                            </td>
-                            <td x-text="row.activities"></td>
-                            <td x-text="row.net_worth"></td>
-                        </tr>
-                    </template>
+                <tbody data-calc-target="resultsBody">
                 </tbody>
             </table>
         </div>
@@ -306,125 +668,6 @@
 
     </div>
 
-
-    <script>
-
-        document.addEventListener('alpine:init', () => {
-            Alpine.data('component', () => ({
-                rows: [],
-                currency: localStorage.getItem('currency') || 'EUR',
-                start_worth: parseInt(localStorage.getItem('start_worth')) || 5000,
-                roi: parseInt(localStorage.getItem('roi')) || 5,
-                inflation: parseInt(localStorage.getItem('inflation')) || 2,
-                your_age: parseInt(localStorage.getItem('your_age')) || 30,
-                retirement_age: parseInt(localStorage.getItem('retirement_age')) || 65,
-                death_age: parseInt(localStorage.getItem('death_age')) || 78,
-                expenses: parseInt(localStorage.getItem('expenses')) || 1000,
-                monthly_salary: parseInt(localStorage.getItem('monthly_salary')) || 3000,
-                death_buffer: parseInt(localStorage.getItem('death_buffer')) || 10000,
-                activity_function_js: localStorage.getItem('activity_function_js') || null,
-                ret_benefit_percent_of_start_income: parseInt(localStorage.getItem('ret_benefit_percent_of_start_income')) || 0,
-                ret_benefit_start_age: parseInt(localStorage.getItem('ret_benefit_start_age')) || null,
-                chart: null,
-                inherit_age: parseInt(localStorage.getItem('inherit_age')) || null,
-                inherit_money: parseInt(localStorage.getItem('inherit_money')) || 0,
-                adjust_inherit_money_for_inflation: localStorage.getItem('adjust_inherit_money_for_inflation') == "true",
-                compute() {
-                    const rows = main({
-                        AGE: parseInt(this.your_age),
-                        RET: parseInt(this.retirement_age),
-                        INCOME: parseInt(this.monthly_salary),
-                        DEATH: parseInt(this.death_age),
-                        EXPENSES: parseInt(this.expenses),
-                        NET_WORTH: parseInt(this.start_worth),
-                        INFL: parseFloat(this.inflation),
-                        ROI: parseFloat(this.roi),
-                        DEATH_BUFFER: parseInt(this.death_buffer),
-                        ACTIVITY_FN: this.activity_function_js,
-                        RET_BENEFIT_PERCENT_OF_START_INCOME: parseFloat(this.ret_benefit_percent_of_start_income),
-                        RET_BENEFIT_START_AGE: parseInt(this.ret_benefit_start_age),
-                        INHERIT_AGE: parseInt(this.inherit_age),
-                        INHERIT_MONEY: parseFloat(this.inherit_money),
-                        ADJUST_INHERIT_MONEY_FOR_INFLATION: this.adjust_inherit_money_for_inflation
-                    })
-
-                    if (this.chart) {
-                        this.chart.destroy()
-                    }
-
-                    this.rows = [...rows]
-
-                    const ctx = document.getElementById('net-worth-chart');
-
-                    this.chart = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: rows.map(row => row.age),
-                            datasets: [{
-                                label: 'Net worth',
-                                data: rows.map(row => row.net_worth),
-                                backgroundColor: [
-                                    'rgba(255, 99, 132, 0.2)',
-                                ],
-                                borderColor: [
-                                    'rgba(255, 99, 132, 1)',
-                                ],
-                                borderWidth: 1
-                            }, {
-                                label: 'Activities',
-                                data: rows.map(row => row.activities),
-                                backgroundColor: [
-                                    'rgba(220, 120, 50, 0.2)',
-                                ],
-                                borderColor: [
-                                    'rgba(220, 120, 50, 1)',
-                                ],
-                                borderWidth: 1
-                            }, {
-                                label: 'Income',
-                                data: rows.map(row => row.income_this_year),
-                                backgroundColor: [
-                                    'rgba(20, 255, 20, 0.3)',
-                                ],
-                                borderColor: [
-                                    'rgba(20, 255, 20, 1)',
-                                ],
-                                borderWidth: 1
-                            }, {
-                                label: 'Expenses',
-                                data: rows.map(row => row.expenses_this_year),
-                                backgroundColor: [
-                                    'rgba(255, 0, 0, 0.3)',
-                                ],
-                                borderColor: [
-                                    'rgba(255, 0, 0, 1)',
-                                ],
-                                borderWidth: 1
-                            }, {
-                                label: 'Savings',
-                                data: rows.map(row => row.savings_this_year),
-                                backgroundColor: [
-                                    'rgba(0, 0, 255, 0.3)',
-                                ],
-                                borderColor: [
-                                    'rgba(0, 0, 255, 1)',
-                                ],
-                                borderWidth: 1
-                            }]
-                        },
-                        options: {
-                            scales: {
-                                y: {
-                                    beginAtZero: true
-                                }
-                            }
-                        }
-                    });
-                }
-            }))
-        })
-
-    </script>
 
 </body>
 
